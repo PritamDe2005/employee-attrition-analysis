@@ -12,6 +12,10 @@ import pandas as pd
 import seaborn as sns
 
 from config import FIGURE_DPI, FIGURE_FORMAT
+from src.analysis import (
+    calculate_attrition_rate,
+    calculate_correlation_matrix,
+)
 
 
 def _save_figure(
@@ -43,6 +47,9 @@ def plot_attrition_distribution(
     """
     Create an attrition distribution bar chart.
     """
+    if "Attrition" not in dataframe.columns:
+        return
+
     figure, axis = plt.subplots(figsize=(8, 5))
 
     sns.countplot(
@@ -69,11 +76,16 @@ def plot_attrition_by_department(
     """
     Create a bar chart showing attrition rate by department.
     """
-    department_data = (
-        dataframe.groupby("Department")["Attrition"]
-        .apply(lambda values: (values == "Yes").mean() * 100)
-        .reset_index(name="AttritionRate")
+    if "Department" not in dataframe.columns or "Attrition" not in dataframe.columns:
+        return
+
+    department_data = calculate_attrition_rate(
+        dataframe,
+        "Department",
     )
+
+    if department_data.empty:
+        return
 
     figure, axis = plt.subplots(figsize=(9, 5))
 
@@ -104,12 +116,18 @@ def plot_attrition_by_job_role(
     """
     Create a bar chart showing attrition rate by job role.
     """
-    role_data = (
-        dataframe.groupby("JobRole")["Attrition"]
-        .apply(lambda values: (values == "Yes").mean() * 100)
-        .sort_values(ascending=False)
-        .reset_index(name="AttritionRate")
+    if "JobRole" not in dataframe.columns or "Attrition" not in dataframe.columns:
+        return
+
+    role_data = calculate_attrition_rate(
+        dataframe,
+        "JobRole",
     )
+
+    if role_data.empty:
+        return
+
+    role_data = role_data.sort_values("AttritionRate", ascending=False)
 
     figure, axis = plt.subplots(figsize=(11, 6))
 
@@ -138,6 +156,9 @@ def plot_salary_vs_attrition(
     """
     Create a box plot comparing monthly income across attrition groups.
     """
+    if "MonthlyIncome" not in dataframe.columns or "Attrition" not in dataframe.columns:
+        return
+
     figure, axis = plt.subplots(figsize=(9, 5))
 
     sns.boxplot(
@@ -165,6 +186,9 @@ def plot_age_vs_attrition(
     """
     Create a box plot comparing employee age across attrition groups.
     """
+    if "Age" not in dataframe.columns or "Attrition" not in dataframe.columns:
+        return
+
     figure, axis = plt.subplots(figsize=(9, 5))
 
     sns.boxplot(
@@ -192,6 +216,9 @@ def plot_tenure_vs_attrition(
     """
     Create a box plot comparing years at company across attrition groups.
     """
+    if "YearsAtCompany" not in dataframe.columns or "Attrition" not in dataframe.columns:
+        return
+
     figure, axis = plt.subplots(figsize=(9, 5))
 
     sns.boxplot(
@@ -219,11 +246,16 @@ def plot_overtime_vs_attrition(
     """
     Create a bar chart showing attrition rate by overtime status.
     """
-    overtime_data = (
-        dataframe.groupby("OverTime")["Attrition"]
-        .apply(lambda values: (values == "Yes").mean() * 100)
-        .reset_index(name="AttritionRate")
+    if "OverTime" not in dataframe.columns or "Attrition" not in dataframe.columns:
+        return
+
+    overtime_data = calculate_attrition_rate(
+        dataframe,
+        "OverTime",
     )
+
+    if overtime_data.empty:
+        return
 
     figure, axis = plt.subplots(figsize=(8, 5))
 
@@ -252,11 +284,16 @@ def plot_satisfaction_vs_attrition(
     """
     Create a bar chart showing attrition rate by job satisfaction level.
     """
-    satisfaction_data = (
-        dataframe.groupby("JobSatisfaction")["Attrition"]
-        .apply(lambda values: (values == "Yes").mean() * 100)
-        .reset_index(name="AttritionRate")
+    if "JobSatisfaction" not in dataframe.columns or "Attrition" not in dataframe.columns:
+        return
+
+    satisfaction_data = calculate_attrition_rate(
+        dataframe,
+        "JobSatisfaction",
     )
+
+    if satisfaction_data.empty:
+        return
 
     figure, axis = plt.subplots(figsize=(8, 5))
 
@@ -285,21 +322,10 @@ def plot_correlation_heatmap(
     """
     Create a correlation heatmap for numerical variables.
     """
-    correlation_data = dataframe.copy()
+    correlation_matrix = calculate_correlation_matrix(dataframe)
 
-    correlation_data["AttritionBinary"] = (
-        correlation_data["Attrition"]
-        .map({"Yes": 1, "No": 0})
-    )
-
-    numerical_data = correlation_data.select_dtypes(
-    include="number"
-).drop(
-    columns=["EmployeeID"],
-    errors="ignore",
-)
-
-    correlation_matrix = numerical_data.corr()
+    if correlation_matrix.empty or correlation_matrix.shape[0] < 2:
+        return
 
     figure, axis = plt.subplots(figsize=(14, 11))
 

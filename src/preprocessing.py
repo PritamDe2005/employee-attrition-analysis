@@ -5,7 +5,11 @@ import pandas as pd
 
 from config import (
     CATEGORICAL_COLUMNS,
+    EDUCATION_MAPPING,
+    FLEXIBLE_ATTRITION_MAPPING,
+    ID_COLUMN,
     NUMERICAL_COLUMNS,
+    SATISFACTION_COLUMNS,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,7 +40,6 @@ def standardize_categorical_values(dataframe: pd.DataFrame) -> pd.DataFrame:
         )
 
     # Known variations introduced by the raw dataset.
-        # Known variations introduced by the raw dataset.
     replacements = {
         "Gender": {
             "male": "Male",
@@ -74,6 +77,19 @@ def standardize_categorical_values(dataframe: pd.DataFrame) -> pd.DataFrame:
                 .replace(mapping)
             )
 
+    # Flexible normalization for Attrition (Yes/No, 1/0, True/False, Left/Stayed)
+    if "Attrition" in cleaned_dataframe.columns:
+        attrition_norm = (
+            cleaned_dataframe["Attrition"]
+            .astype("string")
+            .str.strip()
+            .str.lower()
+        )
+        mapped_target = attrition_norm.map(FLEXIBLE_ATTRITION_MAPPING)
+        cleaned_dataframe["Attrition"] = mapped_target.fillna(
+            cleaned_dataframe["Attrition"]
+        )
+
     return cleaned_dataframe
 
 
@@ -90,6 +106,12 @@ def convert_data_types(dataframe: pd.DataFrame) -> pd.DataFrame:
     """
     cleaned_dataframe = dataframe.copy()
 
+    # Map text education degrees to ordinal integers if string values exist
+    if "Education" in cleaned_dataframe.columns:
+        cleaned_dataframe["Education"] = (
+            cleaned_dataframe["Education"].replace(EDUCATION_MAPPING)
+        )
+
     for column in NUMERICAL_COLUMNS:
         if column in cleaned_dataframe.columns:
             cleaned_dataframe[column] = pd.to_numeric(
@@ -97,9 +119,9 @@ def convert_data_types(dataframe: pd.DataFrame) -> pd.DataFrame:
                 errors="coerce",
             )
 
-    if "EmployeeID" in cleaned_dataframe.columns:
-        cleaned_dataframe["EmployeeID"] = pd.to_numeric(
-            cleaned_dataframe["EmployeeID"],
+    if ID_COLUMN in cleaned_dataframe.columns:
+        cleaned_dataframe[ID_COLUMN] = pd.to_numeric(
+            cleaned_dataframe[ID_COLUMN],
             errors="coerce",
         )
 
@@ -141,10 +163,10 @@ def remove_duplicate_employee_ids(
     """
     cleaned_dataframe = dataframe.copy()
 
-    if "EmployeeID" not in cleaned_dataframe.columns:
+    if ID_COLUMN not in cleaned_dataframe.columns:
         return cleaned_dataframe
 
-    duplicate_id_mask = cleaned_dataframe["EmployeeID"].duplicated(
+    duplicate_id_mask = cleaned_dataframe[ID_COLUMN].duplicated(
         keep="first"
     )
 
@@ -152,9 +174,10 @@ def remove_duplicate_employee_ids(
 
     if duplicate_id_count:
         logger.warning(
-            "Found %d duplicate EmployeeID records. "
+            "Found %d duplicate %s records. "
             "Keeping the first occurrence.",
             duplicate_id_count,
+            ID_COLUMN,
         )
 
         cleaned_dataframe = cleaned_dataframe.loc[
@@ -239,20 +262,21 @@ def handle_invalid_numerical_values(
             )
 
     # Satisfaction scores
-    satisfaction_columns = [
-        "JobSatisfaction",
-        "EnvironmentSatisfaction",
-        "RelationshipSatisfaction",
-        "WorkLifeBalance",
-    ]
-
-    for column in satisfaction_columns:
+    for column in SATISFACTION_COLUMNS:
         if column in cleaned_dataframe.columns:
             replace_invalid(
                 column,
                 (cleaned_dataframe[column] < 1)
                 | (cleaned_dataframe[column] > 4),
             )
+
+    # Education level (1-5)
+    if "Education" in cleaned_dataframe.columns:
+        replace_invalid(
+            "Education",
+            (cleaned_dataframe["Education"] < 1)
+            | (cleaned_dataframe["Education"] > 5),
+        )
 
     # Job level
     if "JobLevel" in cleaned_dataframe.columns:
@@ -437,14 +461,14 @@ def validate_cleaned_data(
             f"{duplicate_rows} duplicate rows remain after preprocessing."
         )
 
-    if "EmployeeID" in dataframe.columns:
+    if ID_COLUMN in dataframe.columns:
         duplicate_employee_ids = int(
-            dataframe["EmployeeID"].duplicated().sum()
+            dataframe[ID_COLUMN].duplicated().sum()
         )
 
         if duplicate_employee_ids:
             raise ValueError(
-                f"{duplicate_employee_ids} duplicate EmployeeID values "
+                f"{duplicate_employee_ids} duplicate {ID_COLUMN} values "
                 "remain after preprocessing."
             )
 

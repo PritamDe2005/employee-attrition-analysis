@@ -18,8 +18,11 @@ import pandas as pd
 from config import (
     AGE_BINS,
     AGE_LABELS,
+    ATTRITION_BINARY_MAPPING,
+    ID_COLUMN,
     SALARY_BINS,
     SALARY_LABELS,
+    SATISFACTION_COLUMNS,
     TENURE_BINS,
     TENURE_LABELS,
 )
@@ -50,10 +53,15 @@ def calculate_attrition_rate(
     pd.DataFrame
         Grouped attrition statistics.
     """
+    if group_column not in dataframe.columns or "Attrition" not in dataframe.columns:
+        return pd.DataFrame()
+
+    count_col = ID_COLUMN if ID_COLUMN in dataframe.columns else "Attrition"
+
     result = (
         dataframe.groupby(group_column, dropna=False)
         .agg(
-            EmployeeCount=("EmployeeID", "count"),
+            EmployeeCount=(count_col, "count"),
             AttritionCount=(
                 "Attrition",
                 lambda values: (values == "Yes").sum(),
@@ -120,28 +128,27 @@ def analyze_department(
     - Employee count
     - Attrition count
     - Attrition percentage
-    - Average monthly income
-    - Average job satisfaction
+    - Average monthly income (if available)
+    - Average job satisfaction (if available)
     """
-    result = (
-        dataframe.groupby("Department")
-        .agg(
-            EmployeeCount=("EmployeeID", "count"),
-            AttritionCount=(
-                "Attrition",
-                lambda values: (values == "Yes").sum(),
-            ),
-            AverageMonthlyIncome=(
-                "MonthlyIncome",
-                "mean",
-            ),
-            AverageJobSatisfaction=(
-                "JobSatisfaction",
-                "mean",
-            ),
-        )
-        .reset_index()
-    )
+    if "Department" not in dataframe.columns or "Attrition" not in dataframe.columns:
+        return pd.DataFrame()
+
+    count_col = ID_COLUMN if ID_COLUMN in dataframe.columns else "Attrition"
+    agg_dict: dict = {
+        "EmployeeCount": (count_col, "count"),
+        "AttritionCount": (
+            "Attrition",
+            lambda values: (values == "Yes").sum(),
+        ),
+    }
+
+    if "MonthlyIncome" in dataframe.columns:
+        agg_dict["AverageMonthlyIncome"] = ("MonthlyIncome", "mean")
+    if "JobSatisfaction" in dataframe.columns:
+        agg_dict["AverageJobSatisfaction"] = ("JobSatisfaction", "mean")
+
+    result = dataframe.groupby("Department").agg(**agg_dict).reset_index()
 
     result["AttritionRate"] = (
         result["AttritionCount"]
@@ -149,13 +156,15 @@ def analyze_department(
         * 100
     ).round(2)
 
-    result["AverageMonthlyIncome"] = (
-        result["AverageMonthlyIncome"].round(2)
-    )
+    if "AverageMonthlyIncome" in result.columns:
+        result["AverageMonthlyIncome"] = (
+            result["AverageMonthlyIncome"].round(2)
+        )
 
-    result["AverageJobSatisfaction"] = (
-        result["AverageJobSatisfaction"].round(2)
-    )
+    if "AverageJobSatisfaction" in result.columns:
+        result["AverageJobSatisfaction"] = (
+            result["AverageJobSatisfaction"].round(2)
+        )
 
     return result
 
@@ -174,23 +183,24 @@ def analyze_job_role(
     - Employee count
     - Attrition count
     - Attrition rate
-    - Average monthly income
+    - Average monthly income (if available)
     """
-    result = (
-        dataframe.groupby("JobRole")
-        .agg(
-            EmployeeCount=("EmployeeID", "count"),
-            AttritionCount=(
-                "Attrition",
-                lambda values: (values == "Yes").sum(),
-            ),
-            AverageMonthlyIncome=(
-                "MonthlyIncome",
-                "mean",
-            ),
-        )
-        .reset_index()
-    )
+    if "JobRole" not in dataframe.columns or "Attrition" not in dataframe.columns:
+        return pd.DataFrame()
+
+    count_col = ID_COLUMN if ID_COLUMN in dataframe.columns else "Attrition"
+    agg_dict: dict = {
+        "EmployeeCount": (count_col, "count"),
+        "AttritionCount": (
+            "Attrition",
+            lambda values: (values == "Yes").sum(),
+        ),
+    }
+
+    if "MonthlyIncome" in dataframe.columns:
+        agg_dict["AverageMonthlyIncome"] = ("MonthlyIncome", "mean")
+
+    result = dataframe.groupby("JobRole").agg(**agg_dict).reset_index()
 
     result["AttritionRate"] = (
         result["AttritionCount"]
@@ -198,9 +208,10 @@ def analyze_job_role(
         * 100
     ).round(2)
 
-    result["AverageMonthlyIncome"] = (
-        result["AverageMonthlyIncome"].round(2)
-    )
+    if "AverageMonthlyIncome" in result.columns:
+        result["AverageMonthlyIncome"] = (
+            result["AverageMonthlyIncome"].round(2)
+        )
 
     return result.sort_values(
         "AttritionRate",
@@ -225,12 +236,13 @@ def create_salary_band(
     """
     dataframe = dataframe.copy()
 
-    dataframe["SalaryBand"] = pd.cut(
-        dataframe["MonthlyIncome"],
-        bins=SALARY_BINS,
-        labels=SALARY_LABELS,
-        include_lowest=True,
-    )
+    if "MonthlyIncome" in dataframe.columns:
+        dataframe["SalaryBand"] = pd.cut(
+            dataframe["MonthlyIncome"],
+            bins=SALARY_BINS,
+            labels=SALARY_LABELS,
+            include_lowest=True,
+        )
 
     return dataframe
 
@@ -241,14 +253,15 @@ def analyze_salary_band(
     """
     Analyze attrition across salary bands.
     """
+    if "MonthlyIncome" not in dataframe.columns or "Attrition" not in dataframe.columns:
+        return pd.DataFrame()
+
     dataframe = create_salary_band(dataframe)
 
-    result = calculate_attrition_rate(
+    return calculate_attrition_rate(
         dataframe,
         "SalaryBand",
     )
-
-    return result
 
 
 # ---------------------------------------------------------------------------
@@ -263,12 +276,13 @@ def create_age_group(
     """
     dataframe = dataframe.copy()
 
-    dataframe["AgeGroup"] = pd.cut(
-        dataframe["Age"],
-        bins=AGE_BINS,
-        labels=AGE_LABELS,
-        include_lowest=True,
-    )
+    if "Age" in dataframe.columns:
+        dataframe["AgeGroup"] = pd.cut(
+            dataframe["Age"],
+            bins=AGE_BINS,
+            labels=AGE_LABELS,
+            include_lowest=True,
+        )
 
     return dataframe
 
@@ -279,14 +293,15 @@ def analyze_age_group(
     """
     Analyze attrition across age groups.
     """
+    if "Age" not in dataframe.columns or "Attrition" not in dataframe.columns:
+        return pd.DataFrame()
+
     dataframe = create_age_group(dataframe)
 
-    result = calculate_attrition_rate(
+    return calculate_attrition_rate(
         dataframe,
         "AgeGroup",
     )
-
-    return result
 
 
 # ---------------------------------------------------------------------------
@@ -301,12 +316,13 @@ def create_tenure_group(
     """
     dataframe = dataframe.copy()
 
-    dataframe["TenureGroup"] = pd.cut(
-        dataframe["YearsAtCompany"],
-        bins=TENURE_BINS,
-        labels=TENURE_LABELS,
-        include_lowest=True,
-    )
+    if "YearsAtCompany" in dataframe.columns:
+        dataframe["TenureGroup"] = pd.cut(
+            dataframe["YearsAtCompany"],
+            bins=TENURE_BINS,
+            labels=TENURE_LABELS,
+            include_lowest=True,
+        )
 
     return dataframe
 
@@ -317,14 +333,15 @@ def analyze_tenure(
     """
     Analyze attrition across employee tenure groups.
     """
+    if "YearsAtCompany" not in dataframe.columns or "Attrition" not in dataframe.columns:
+        return pd.DataFrame()
+
     dataframe = create_tenure_group(dataframe)
 
-    result = calculate_attrition_rate(
+    return calculate_attrition_rate(
         dataframe,
         "TenureGroup",
     )
-
-    return result
 
 
 # ---------------------------------------------------------------------------
@@ -343,20 +360,21 @@ def analyze_satisfaction(
     - Relationship satisfaction
     - Work-life balance
     """
-    satisfaction_columns = [
-        "JobSatisfaction",
-        "EnvironmentSatisfaction",
-        "RelationshipSatisfaction",
-        "WorkLifeBalance",
+    results = []
+    present_cols = [
+        col for col in SATISFACTION_COLUMNS if col in dataframe.columns
     ]
 
-    results = []
+    if not present_cols or "Attrition" not in dataframe.columns:
+        return pd.DataFrame()
 
-    for column in satisfaction_columns:
+    count_col = ID_COLUMN if ID_COLUMN in dataframe.columns else "Attrition"
+
+    for column in present_cols:
         grouped = (
             dataframe.groupby(column)
             .agg(
-                EmployeeCount=("EmployeeID", "count"),
+                EmployeeCount=(count_col, "count"),
                 AttritionCount=(
                     "Attrition",
                     lambda values: (values == "Yes").sum(),
@@ -395,6 +413,9 @@ def analyze_overtime(
     """
     Analyze employee attrition based on overtime status.
     """
+    if "OverTime" not in dataframe.columns or "Attrition" not in dataframe.columns:
+        return pd.DataFrame()
+
     return calculate_attrition_rate(
         dataframe,
         "OverTime",
@@ -423,19 +444,25 @@ def calculate_correlation_matrix(
     pd.DataFrame
         Correlation matrix excluding EmployeeID.
     """
+    if "Attrition" not in dataframe.columns:
+        return pd.DataFrame()
+
     correlation_data = dataframe.copy()
 
     correlation_data["AttritionBinary"] = (
         correlation_data["Attrition"]
-        .map({"Yes": 1, "No": 0})
+        .map(ATTRITION_BINARY_MAPPING)
     )
 
     numerical_data = correlation_data.select_dtypes(
         include="number"
     ).drop(
-        columns=["EmployeeID"],
+        columns=[ID_COLUMN],
         errors="ignore",
     )
+
+    if numerical_data.empty or len(numerical_data.columns) < 2:
+        return pd.DataFrame()
 
     return numerical_data.corr().round(3)
 
@@ -448,34 +475,43 @@ def generate_summary_tables(
     dataframe: pd.DataFrame,
 ) -> dict[str, pd.DataFrame]:
     """
-    Generate all major summary tables required by the project.
+    Generate all major summary tables available based on the columns
+    present in the dataset.
 
     Returns
     -------
     dict[str, pd.DataFrame]
-        Dictionary containing named analysis tables.
+        Dictionary containing named analysis tables for available dimensions.
     """
-    salary_data = create_salary_band(dataframe)
-    age_data = create_age_group(dataframe)
-    tenure_data = create_tenure_group(dataframe)
+    tables: dict[str, pd.DataFrame] = {}
 
-    return {
-        "attrition": analyze_attrition_distribution(dataframe),
-        "department": analyze_department(dataframe),
-        "job_role": analyze_job_role(dataframe),
-        "salary_band": calculate_attrition_rate(
-            salary_data,
-            "SalaryBand",
-        ),
-        "age_group": calculate_attrition_rate(
-            age_data,
-            "AgeGroup",
-        ),
-        "tenure_group": calculate_attrition_rate(
-            tenure_data,
-            "TenureGroup",
-        ),
-        "satisfaction": analyze_satisfaction(dataframe),
-        "overtime": analyze_overtime(dataframe),
-        "correlation": calculate_correlation_matrix(dataframe),
-    }
+    if "Attrition" in dataframe.columns:
+        tables["attrition"] = analyze_attrition_distribution(dataframe)
+
+    if "Department" in dataframe.columns and "Attrition" in dataframe.columns:
+        tables["department"] = analyze_department(dataframe)
+
+    if "JobRole" in dataframe.columns and "Attrition" in dataframe.columns:
+        tables["job_role"] = analyze_job_role(dataframe)
+
+    if "MonthlyIncome" in dataframe.columns and "Attrition" in dataframe.columns:
+        tables["salary_band"] = analyze_salary_band(dataframe)
+
+    if "Age" in dataframe.columns and "Attrition" in dataframe.columns:
+        tables["age_group"] = analyze_age_group(dataframe)
+
+    if "YearsAtCompany" in dataframe.columns and "Attrition" in dataframe.columns:
+        tables["tenure_group"] = analyze_tenure(dataframe)
+
+    if any(col in dataframe.columns for col in SATISFACTION_COLUMNS) and "Attrition" in dataframe.columns:
+        tables["satisfaction"] = analyze_satisfaction(dataframe)
+
+    if "OverTime" in dataframe.columns and "Attrition" in dataframe.columns:
+        tables["overtime"] = analyze_overtime(dataframe)
+
+    if len(dataframe.select_dtypes(include="number").columns) > 1 and "Attrition" in dataframe.columns:
+        corr_table = calculate_correlation_matrix(dataframe)
+        if not corr_table.empty:
+            tables["correlation"] = corr_table
+
+    return tables

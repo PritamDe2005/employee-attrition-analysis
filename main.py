@@ -12,7 +12,9 @@ Pipeline:
 8. Generate visualizations.
 """
 
+import argparse
 import logging
+from pathlib import Path
 
 from config import (
     DATA_DIR,
@@ -24,7 +26,13 @@ from config import (
     TABLES_DIR,
 )
 from src.analysis import generate_summary_tables
-from src.data_loader import load_and_validate_dataset
+from src.column_mapper import apply_column_mapping, resolve_column_mapping
+from src.data_loader import (
+    get_dataset_info,
+    load_and_validate_dataset,
+    load_dataset_from_source,
+    validate_dynamic_schema,
+)
 from src.preprocessing import preprocess_dataset
 from src.utils import (
     configure_logging,
@@ -39,6 +47,17 @@ logger = logging.getLogger(__name__)
 
 def main() -> None:
     """Run the complete employee attrition analysis pipeline."""
+    parser = argparse.ArgumentParser(
+        description="Employee Attrition Analysis Pipeline"
+    )
+    parser.add_argument(
+        "-i",
+        "--input",
+        type=str,
+        default=None,
+        help="Path to custom CSV or Excel dataset (.csv, .xlsx, .xls).",
+    )
+    args = parser.parse_args()
 
     # ------------------------------------------------------------------
     # 1. Create required directories
@@ -61,20 +80,32 @@ def main() -> None:
 
     configure_logging()
 
+    input_path = Path(args.input) if args.input else RAW_DATA_FILE
     logger.info("Starting Employee Attrition Analysis.")
-    logger.info("Raw dataset: %s", RAW_DATA_FILE)
+    logger.info("Dataset source: %s", input_path)
 
     try:
         # --------------------------------------------------------------
         # 3. Load and validate raw dataset
         # --------------------------------------------------------------
 
-        dataframe = load_and_validate_dataset()
+        if args.input:
+            dataframe = load_dataset_from_source(input_path)
+            mapping, unmapped = resolve_column_mapping(list(dataframe.columns))
+            dataframe = apply_column_mapping(dataframe, mapping)
+            validate_dynamic_schema(dataframe)
+        else:
+            dataframe = load_and_validate_dataset(input_path)
+
+        raw_info = get_dataset_info(dataframe)
 
         logger.info(
-            "Raw dataset loaded successfully: %d rows, %d columns.",
-            len(dataframe),
-            len(dataframe.columns),
+            "Raw dataset loaded successfully: %d rows, %d columns, "
+            "%d missing cells, %d duplicate rows.",
+            raw_info["rows"],
+            raw_info["columns"],
+            raw_info["missing_cells"],
+            raw_info["duplicate_rows"],
         )
 
         # --------------------------------------------------------------
@@ -82,11 +113,15 @@ def main() -> None:
         # --------------------------------------------------------------
 
         cleaned_dataframe = preprocess_dataset(dataframe)
+        cleaned_info = get_dataset_info(cleaned_dataframe)
 
         logger.info(
-            "Cleaned dataset contains %d rows, %d columns.",
-            len(cleaned_dataframe),
-            len(cleaned_dataframe.columns),
+            "Cleaned dataset ready: %d rows, %d columns, "
+            "%d missing cells, %d duplicate rows.",
+            cleaned_info["rows"],
+            cleaned_info["columns"],
+            cleaned_info["missing_cells"],
+            cleaned_info["duplicate_rows"],
         )
 
         # --------------------------------------------------------------
