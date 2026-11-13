@@ -196,7 +196,7 @@ def main() -> None:
         )
 
         try:
-            with open(RAW_DATA_FILE, "rb") as template_file:
+            with open(data/employee_attrition_template (1).csv, "rb") as template_file:
                 st.sidebar.download_button(
                     label="📥 Download Template (CSV)",
                     data=template_file,
